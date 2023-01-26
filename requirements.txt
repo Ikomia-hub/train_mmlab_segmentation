@@ -3,6 +3,6 @@ yapf
 torch==1.9.0
 torchvision==0.10.0
 --find-links https://download.openmmlab.com/mmcv/dist/cu111/torch1.9.0/index.html
-mmcv-full==1.4.7
-mmcls==0.21.0
-mmsegmentation==0.22.1
+mmcls==1.0.0rc5
+mmcv==2.0.0rc1
+mmsegmentation==1.0.0rc0
