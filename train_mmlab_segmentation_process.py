@@ -27,31 +27,67 @@ from distutils.util import strtobool
 import copy
 import os
 import os.path as osp
-import time
 import warnings
 
-import mmcv
-import torch
-import torch.distributed as dist
-from mmcv.cnn.utils import revert_sync_batchnorm
-from mmcv.runner import get_dist_info, init_dist
-from mmcv.utils import Config, DictAction, get_git_hash
-
-from mmseg import __version__
-from mmseg.apis import init_random_seed, set_random_seed, train_segmentor
-from mmseg.datasets import build_dataset
-from mmseg.models import build_segmentor
-from mmseg.utils import collect_env, get_root_logger, setup_multi_processes
 from argparse import Namespace
-from train_mmlab_segmentation.utils import prepare_dataset
+from train_mmlab_segmentation.utils import prepare_dataset, UserStop
 import numpy as np
 from datetime import datetime
 
-from mmseg.datasets.builder import DATASETS
-from mmseg.datasets.custom import CustomDataset
+from mmengine.visualization import Visualizer
+from mmengine.runner import Runner
+from mmengine.config import Config
+
+from mmseg.utils import register_all_modules
 import logging
 
 logger = logging.getLogger(__name__)
+
+class MyRunner(Runner):
+
+    @classmethod
+    def from_custom_cfg(cls, cfg, custom_hooks, visualizer):
+        """Build a runner from config.
+
+        Args:
+            cfg (ConfigType): A config used for building runner. Keys of
+                ``cfg`` can see :meth:`__init__`.
+
+        Returns:
+            Runner: A runner build from ``cfg``.
+        """
+        cfg = copy.deepcopy(cfg)
+        runner = cls(
+            model=cfg['model'],
+            work_dir=cfg['work_dir'],
+            train_dataloader=cfg.get('train_dataloader'),
+            val_dataloader=cfg.get('val_dataloader'),
+            test_dataloader=cfg.get('test_dataloader'),
+            train_cfg=cfg.get('train_cfg'),
+            val_cfg=cfg.get('val_cfg'),
+            test_cfg=cfg.get('test_cfg'),
+            auto_scale_lr=cfg.get('auto_scale_lr'),
+            optim_wrapper=cfg.get('optim_wrapper'),
+            param_scheduler=cfg.get('param_scheduler'),
+            val_evaluator=cfg.get('val_evaluator'),
+            test_evaluator=cfg.get('test_evaluator'),
+            default_hooks=cfg.get('default_hooks'),
+            custom_hooks=custom_hooks,
+            data_preprocessor=cfg.get('data_preprocessor'),
+            load_from=cfg.get('load_from'),
+            resume=cfg.get('resume', False),
+            launcher=cfg.get('launcher', 'none'),
+            env_cfg=cfg.get('env_cfg'),  # type: ignore
+            log_processor=cfg.get('log_processor'),
+            log_level=cfg.get('log_level', 'INFO'),
+            visualizer=visualizer,
+            default_scope=cfg.get('default_scope', 'mmengine'),
+            randomness=cfg.get('randomness', dict(seed=None)),
+            experiment_name=cfg.get('experiment_name'),
+            cfg=cfg,
+        )
+
+        return runner
 
 
 # --------------------
@@ -192,188 +228,152 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
             args.diff_seed = False
             args.persistent_workers = True
 
-        args.work_dir = os.path.join(param.cfg["output_folder"], str_datetime)
+            args.work_dir = os.path.join(param.cfg["output_folder"], str_datetime)
 
-        cfg = Config.fromfile(args.config)
-        if args.cfg_options is not None:
-            cfg.merge_from_dict(args.cfg_options)
+            cfg = Config.fromfile(args.config)
+            if args.cfg_options is not None:
+                cfg.merge_from_dict(args.cfg_options)
 
-        cfg.dataset_type = 'CustomDataset'
-        cfg.data_root = param.cfg["dataset_folder"]
-        cfg.data.train.type = cfg.dataset_type
-        cfg.data.val.type = cfg.dataset_type
-        cfg.data.train.data_root = cfg.data_root
-        cfg.data.val.data_root = cfg.data_root
-        cfg.data.train.img_dir = 'images'
-        cfg.data.val.img_dir = 'images'
-        cfg.data.train.ann_dir = 'labels'
-        cfg.data.val.ann_dir = 'labels'
-        cfg.data.val.classes = [cls for cls in ikdataset["metadata"]["category_names"].values()]
-        if cmap is not None:
-            cfg.data.val.palette = [list(color) for color in cmap.keys()]
-        else:
-            cfg.data.val.palette = np.random.randint(256, size=(len(cfg.data.val.classes), 3)).tolist()
-        if not expert_mode:
-            cfg.optimizer.lr = cfg.optimizer.lr / cfg.data.samples_per_gpu
-            cfg.data.samples_per_gpu = param.cfg["batch_size"]
-            cfg.data.workers_per_gpu = 1
-            cfg.evaluation = dict(interval=param.cfg["eval_period"], metric='mIoU', pre_eval=True, save_best='mIoU',
-                                  ignore_index=0)
-            cfg.runner = dict(type='IterBasedRunner', max_iters=param.cfg["iters"])
+            cfg.dataset_type = 'BaseSegDataset'
 
-        cfg.data.train.split = "splits/train.txt"
-        cfg.data.val.split = "splits/val.txt"
-        for elt in cfg.train_pipeline:
-            if elt['type'] == 'LoadAnnotations':
-                elt['reduce_zero_label'] = False
-        for elt in cfg.data.train.pipeline:
-            if elt['type'] == 'LoadAnnotations':
-                elt['reduce_zero_label'] = False
-        cfg.checkpoint_config = dict()
-        cfg.model.decode_head.num_classes = len(ikdataset["metadata"]["category_names"])
 
-        # set cudnn_benchmark
-        if cfg.get('cudnn_benchmark', False):
-            torch.backends.cudnn.benchmark = True
+            classes = [cls for cls in ikdataset["metadata"]["category_names"].values()]
+            if cmap is not None:
+                palette = [list(color) for color in cmap.keys()]
+            else:
+                palette = np.random.randint(256, size=(len(classes), 3)).tolist()
 
-        # work_dir is determined in this priority: CLI > segment in file > filename
-        if args.work_dir is not None:
-            # update configs according to CLI args if args.work_dir is not None
-            cfg.work_dir = args.work_dir
-        elif cfg.get('work_dir', None) is None:
-            # use config filename as default work_dir if cfg.work_dir is None
-            cfg.work_dir = osp.join('./work_dirs',
-                                    osp.splitext(osp.basename(args.config))[0])
-        if args.load_from is not None:
-            cfg.load_from = args.load_from
+            for t in cfg.train_pipeline:
+                if "reduce_zero_label" in t:
+                    t.reduce_zero_label = False
+            for t in cfg.test_pipeline:
+                if "reduce_zero_label" in t:
+                    t.reduce_zero_label = False
 
-        cfg.model.pretrained = None
-        if args.resume_from is not None:
-            cfg.resume_from = args.resume_from
-        if args.gpus is not None:
-            cfg.gpu_ids = range(1)
-            warnings.warn('`--gpus` is deprecated because we only support '
-                          'single GPU mode in non-distributed training. '
-                          'Use `gpus=1` now.')
-        if args.gpu_ids is not None:
-            cfg.gpu_ids = args.gpu_ids[0:1]
-            warnings.warn('`--gpu-ids` is deprecated, please use `--gpu-id`. '
-                          'Because we only support single GPU mode in '
-                          'non-distributed training. Use the first GPU '
-                          'in `gpu_ids` now.')
-        if args.gpus is None and args.gpu_ids is None:
-            cfg.gpu_ids = [args.gpu_id]
+            test_dataset = dict(type= cfg.dataset_type,
+                        img_suffix = '.jpg',
+                        seg_map_suffix = '.png',
+                        metainfo = dict(classes = classes, palette= palette),
+                        data_root = None,
+                        data_prefix= dict(img_path=os.path.join(param.cfg["dataset_folder"], "images", "val"),
+                                          seg_map_path=os.path.join(param.cfg["dataset_folder"], "labels", "val")),
+                        reduce_zero_label = False,
+                        pipeline=cfg.test_pipeline)
+            train_dataset = dict(type= cfg.dataset_type,
+                        img_suffix='.jpg',
+                        seg_map_suffix='.png',
+                        metainfo=dict(classes=classes, palette=palette),
+                        data_root=None,
+                        data_prefix=dict(img_path=os.path.join(param.cfg["dataset_folder"], "images", "train"),
+                                         seg_map_path=os.path.join(param.cfg["dataset_folder"], "labels", "train")),
+                        reduce_zero_label=False,
+                        pipeline=cfg.train_pipeline)
 
-        cfg.auto_resume = args.auto_resume
+            cfg.train_dataloader = dict(
+                batch_size=param.cfg["batch_size"],
+                num_workers=0,
+                persistent_workers=False,
+                sampler=dict(type='DefaultSampler', shuffle=True),
+                dataset=train_dataset)
 
-        # init distributed env first, since logger depends on the dist info.
-        if args.launcher == 'none':
-            distributed = False
-        else:
-            distributed = True
-            init_dist(args.launcher, **cfg.dist_params)
-            # gpu_ids is used to calculate iter when resuming checkpoint
-            _, world_size = get_dist_info()
-            cfg.gpu_ids = range(world_size)
+            cfg.test_dataloader = dict(
+                batch_size=1,
+                num_workers=0,
+                persistent_workers=False,
+                sampler=dict(type='DefaultSampler', shuffle=True),
+                dataset=test_dataset)
 
-        # create work_dir
-        mmcv.mkdir_or_exist(osp.abspath(cfg.work_dir))
+            cfg.val_dataloader = cfg.test_dataloader
 
-        # init the logger before other steps
-        timestamp = str_datetime
-        """log_file = osp.join(cfg.work_dir, f'{timestamp}.log')
-        logger = get_root_logger(log_file=log_file, log_level=cfg.log_level)
-        """
-        # log some basic info
-        logger.info(f'Distributed training: {distributed}')
-        logger.info(f'Config:\n{cfg.pretty_text}')
+            if "checkpoint" in cfg.default_hooks:
+                cfg.default_hooks.checkpoint["interval"] = -1
+                cfg.default_hooks.checkpoint["save_best"] = 'mIoU'
+                cfg.default_hooks.checkpoint["rule"] = 'greater'
 
-        datasets = [build_dataset(cfg.data.train)]
-        if len(cfg.workflow) == 2:
-            val_dataset = copy.deepcopy(cfg.data.val)
-            val_dataset.pipeline = cfg.data.train.pipeline
-            datasets.append(build_dataset(val_dataset))
+            cfg.train_cfg = dict(
+                type='IterBasedTrainLoop', max_iters=param.cfg["iters"], val_interval=param.cfg["eval_period"])
 
-        # save mmseg version, and class names in
-        # checkpoints as metadata
-        if cfg.checkpoint_config is not None:
-            # save mmseg version, config file content and class names in
-            # checkpoints as meta data
-            cfg.checkpoint_config.meta = dict(
-                mmseg_version=f'{__version__}+{get_git_hash()[:7]}',
-                # config=cfg.pretty_text,
-                CLASSES=cfg.data.val.classes,
-                PALETTE=cfg.data.val.palette
-            )
-        # dump config
-        cfg.dump(osp.join(cfg.work_dir, osp.basename(args.config)))
+            cfg.param_scheduler = [
+                dict(
+                    type='LinearLR', start_factor=1e-06, by_epoch=False, begin=0,
+                    end=param.cfg["iters"]//10),
+                dict(
+                    type='PolyLR',
+                    eta_min=0.0,
+                    power=1.0,
+                    begin=param.cfg["iters"]//10,
+                    end=param.cfg["iters"],
+                    by_epoch=False)
+            ]
 
-        # set multi-process settings
-        setup_multi_processes(cfg)
+            cfg.checkpoint_config = dict()
+            cfg.model.decode_head.num_classes = len(ikdataset["metadata"]["category_names"])
 
-        # init the meta dict to record some important information such as
-        # environment info and seed, which will be logged
-        meta = dict()
-        # log env info
-        env_info_dict = collect_env()
-        env_info = '\n'.join([f'{k}: {v}' for k, v in env_info_dict.items()])
-        dash_line = '-' * 60 + '\n'
-        logger.info('Environment info:\n' + dash_line + env_info + '\n' +
-                    dash_line)
-        meta['env_info'] = env_info
+            # work_dir is determined in this priority: CLI > segment in file > filename
+            if args.work_dir is not None:
+                # update configs according to CLI args if args.work_dir is not None
+                cfg.work_dir = args.work_dir
+            elif cfg.get('work_dir', None) is None:
+                # use config filename as default work_dir if cfg.work_dir is None
+                cfg.work_dir = osp.join('./work_dirs',
+                                        osp.splitext(osp.basename(args.config))[0])
+            if args.load_from is not None:
+                cfg.load_from = args.load_from
 
-        # set random seeds
-        seed = init_random_seed(args.seed)
-        seed = seed + dist.get_rank() if args.diff_seed else seed
-        logger.info(f'Set random seed to {seed}, '
-                    f'deterministic: {args.deterministic}')
-        set_random_seed(seed, deterministic=args.deterministic)
-        cfg.seed = seed
-        meta['seed'] = seed
-        meta['exp_name'] = osp.basename(args.config)
+            cfg.model.pretrained = None
+            if args.resume_from is not None:
+                cfg.resume_from = args.resume_from
+            if args.gpus is not None:
+                cfg.gpu_ids = range(1)
+                warnings.warn('`--gpus` is deprecated because we only support '
+                              'single GPU mode in non-distributed training. '
+                              'Use `gpus=1` now.')
+            if args.gpu_ids is not None:
+                cfg.gpu_ids = args.gpu_ids[0:1]
+                warnings.warn('`--gpu-ids` is deprecated, please use `--gpu-id`. '
+                              'Because we only support single GPU mode in '
+                              'non-distributed training. Use the first GPU '
+                              'in `gpu_ids` now.')
+            if args.gpus is None and args.gpu_ids is None:
+                cfg.gpu_ids = [args.gpu_id]
+                # load config
+                cfg.launcher = args.launcher
+                if args.cfg_options is not None:
+                    cfg.merge_from_dict(args.cfg_options)
 
-        model = build_segmentor(
-            cfg.model,
-            train_cfg=cfg.get('train_cfg'),
-            test_cfg=cfg.get('test_cfg'))
-        model.init_weights()
+                # work_dir is determined in this priority: CLI > segment in file > filename
+                if args.work_dir is not None:
+                    # update configs according to CLI args if args.work_dir is not None
+                    cfg.work_dir = args.work_dir
+                elif cfg.get('work_dir', None) is None:
+                    # use config filename as default work_dir if cfg.work_dir is None
+                    cfg.work_dir = osp.join('./work_dirs',
+                                            osp.splitext(osp.basename(args.config))[0])
+        cfg.visualizer = dict(
+        type='SegLocalVisualizer',
+        vis_backends=[dict(type='TensorboardVisBackend', save_dir=tb_logdir)],
+        name='visualizer')
 
-        # SyncBN is not support for DP
-        if not distributed:
-            warnings.warn(
-                'SyncBN is only supported with DDP. To be compatible with DP, '
-                'we convert SyncBN to BN. Please use dist_train.sh which can '
-                'avoid this error.')
-            model = revert_sync_batchnorm(model)
-
-        logger.info(model)
-
-        # add an attribute for visualization convenience
-        model.CLASSES = cfg.data.val.classes
-        model.PALETTE = cfg.data.val.palette
-        # passing checkpoint meta for saving best checkpoint
-        meta.update(cfg.checkpoint_config.meta)
-
-        cfg.custom_hooks = [
+        custom_hooks = [
             dict(type='EmitProgresseAndStopHook', stop=self.get_stop, output_folder=cfg.work_dir,
                  emitStepProgress=self.emitStepProgress, priority='LOWEST'),
-            dict(type='CustomMlflowLoggerHook', log_metrics=self.log_metrics)
+            dict(type='CustomLoggerHook', log_metrics=self.log_metrics)
         ]
-        cfg.log_config = dict(
-            interval=10,
 
-            hooks=[
-                dict(type='TensorboardLoggerHook', log_dir=tb_logdir)
-            ])
+        register_all_modules(init_default_scope=False)
 
-        train_segmentor(
-            model,
-            datasets,
-            cfg,
-            distributed=distributed,
-            validate=(not args.no_validate),
-            timestamp=timestamp,
-            meta=meta)
+        try:
+            visualizer = Visualizer.get_current_instance()
+        except:
+            visualizer = cfg.get('visualizer')
+
+        runner = MyRunner.from_custom_cfg(cfg, custom_hooks, visualizer)
+
+        # start training
+        try:
+            runner.train()
+        except UserStop:
+            print("Training stopped by user")
 
         # Step progress bar:
         self.emitStepProgress()
