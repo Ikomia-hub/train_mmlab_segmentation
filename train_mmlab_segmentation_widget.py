@@ -80,7 +80,7 @@ class TrainMmlabSegmentationWidget(core.CWorkflowTaskWidget):
         layout_ptr = qtconversion.PyQtToQt(self.gridLayout)
 
         # Set widget layout
-        self.setLayout(layout_ptr)
+        self.set_layout(layout_ptr)
 
     def on_model_changed(self, int):
         self.combo_config.clear()
@@ -96,7 +96,7 @@ class TrainMmlabSegmentationWidget(core.CWorkflowTaskWidget):
             self.combo_config.addItem(experiment_name)
         self.combo_config.setCurrentText(list(self.available_cfg_ckpt.keys())[0])
 
-    def onApply(self):
+    def on_apply(self):
         # Apply button clicked slot
 
         # Get parameters from widget
@@ -114,7 +114,7 @@ class TrainMmlabSegmentationWidget(core.CWorkflowTaskWidget):
         self.parameters.cfg["custom_config"] = self.browse_custom_config.path
 
         # Send signal to launch the process
-        self.emitApply(self.parameters)
+        self.emit_apply(self.parameters)
 
 
 # --------------------

@@ -113,7 +113,7 @@ class TrainMmlabSegmentationParam(TaskParam):
         self.cfg["expert_mode"] = False
         self.cfg["custom_config"] = ""
 
-    def setParamMap(self, param_map):
+    def set_values(self, param_map):
         self.cfg["model_name"] = param_map["model_name"]
         self.cfg["model_url"] = param_map["model_url"]
         self.cfg["model_config"] = param_map["model_config"]
@@ -143,11 +143,11 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
 
         # Create parameters class
         if param is None:
-            self.setParam(TrainMmlabSegmentationParam())
+            self.set_param_object(TrainMmlabSegmentationParam())
         else:
-            self.setParam(copy.deepcopy(param))
+            self.set_param_object(copy.deepcopy(param))
 
-    def getProgressSteps(self, eltCount=1):
+    def get_progress_steps(self, eltCount=1):
         # Function returning the number of progress steps for this process
         # This is handled by the main progress bar of Ikomia application
         return 100
@@ -156,26 +156,26 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
         self.epochs_done += 1
         steps = range(self.advancement, int(100 * self.iters_done / self.iters_todo))
         for step in steps:
-            self.emitStepProgress()
+            self.emit_step_progress()
             self.advancement += 1
 
     def run(self):
         # Core function of your process
-        # Call beginTaskRun for initialization
-        self.beginTaskRun()
+        # Call begin_task_run for initialization
+        self.begin_task_run()
 
         self.stop_train = False
 
         # Get param
-        param = self.getParam()
+        param = self.get_param_object()
 
         # Get input dataset
-        input = self.getInput(0)
+        input = self.get_input(0)
         # Current datetime is used as folder name
         str_datetime = datetime.now().strftime("%d-%m-%YT%Hh%Mm%Ss")
         if len(input.data) == 0:
             print("ERROR, there is no input dataset")
-            self.endTaskRun()
+            self.end_task_run()
             return
         # Tensorboard
         tb_logdir = os.path.join(ikcfg.main_cfg["tensorboard"]["log_uri"], str_datetime)
@@ -356,7 +356,7 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
 
         custom_hooks = [
             dict(type='EmitProgresseAndStopHook', stop=self.get_stop, output_folder=cfg.work_dir,
-                 emitStepProgress=self.emitStepProgress, priority='LOWEST'),
+                 emit_step_progress=self.emit_step_progress, priority='LOWEST'),
             dict(type='CustomLoggerHook', log_metrics=self.log_metrics)
         ]
 
@@ -376,10 +376,10 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
             print("Training stopped by user")
 
         # Step progress bar:
-        self.emitStepProgress()
+        self.emit_step_progress()
 
-        # Call endTaskRun to finalize process
-        self.endTaskRun()
+        # Call end_task_run to finalize process
+        self.end_task_run()
 
     def get_stop(self):
         return self.stop_train
@@ -399,20 +399,20 @@ class TrainMmlabSegmentationFactory(dataprocess.CTaskFactory):
         dataprocess.CTaskFactory.__init__(self)
         # Set process information as string here
         self.info.name = "train_mmlab_segmentation"
-        self.info.shortDescription = "Train for MMLAB segmentation models"
+        self.info.short_description = "Train for MMLAB segmentation models"
         self.info.description = "Train for MMLAB segmentation models"
         # relative path -> as displayed in Ikomia application process tree
         self.info.path = "Plugins/Python/Segmentation"
-        self.info.iconPath = "icons/mmlab.png"
-        self.info.version = "1.0.0"
-        # self.info.iconPath = "your path to a specific icon"
+        self.info.icon_path = "icons/mmlab.png"
+        self.info.version = "1.1.0"
+        # self.info.icon_path = "your path to a specific icon"
         self.info.authors = "MMSegmentation Contributors"
         self.info.article = "{MMSegmentation}: OpenMMLab Semantic Segmentation Toolbox and Benchmark"
         self.info.journal = "publication journal"
         self.info.year = 2021
         self.info.license = "Apache 2.0"
         # URL of documentation
-        self.info.documentationLink = "https://mmsegmentation.readthedocs.io/en/latest/"
+        self.info.documentation_link = "https://mmsegmentation.readthedocs.io/en/latest/"
         # Code source repository
         self.info.repository = "https://github.com/open-mmlab/mmsegmentation"
         # Keywords used for search

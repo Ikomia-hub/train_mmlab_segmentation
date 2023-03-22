@@ -16,13 +16,13 @@ class UserStop(Exception):
 @HOOKS.register_module(force=True)
 class EmitProgresseAndStopHook(Hook):
     # Check at each iter if the training must be stopped
-    def __init__(self, stop, output_folder, emitStepProgress):
+    def __init__(self, stop, output_folder, emit_step_progress):
         self.stop = stop
         self.output_folder = output_folder
-        self.emitStepProgress = emitStepProgress
+        self.emit_step_progress = emit_step_progress
 
     def after_epoch(self, runner):
-        self.emitStepProgress()
+        self.emit_step_progress()
 
     def after_train_iter(self, runner, **kwargs):
         # Check if training must be stopped and save last model
