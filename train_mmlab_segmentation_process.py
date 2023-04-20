@@ -103,27 +103,27 @@ class TrainMmlabSegmentationParam(TaskParam):
                                 "segformer_mit-b2_512x512_160k_ade20k/" \
                                 "segformer_mit-b2_512x512_160k_ade20k_20210726_112103-cbd414ac.pth"
         self.cfg["model_config"] = "segformer_mit-b2_512x512_160k_ade20k"
-        self.cfg["iters"] = 1000
+        self.cfg["max_iter"] = 1000
         self.cfg["batch_size"] = 2
-        self.cfg["dataset_split_percentage"] = 90
+        self.cfg["dataset_split_ratio"] = 0.9
         self.cfg["output_folder"] = os.path.dirname(os.path.realpath(__file__)) + "/runs/"
         self.cfg["eval_period"] = 100
         plugin_folder = os.path.dirname(os.path.realpath(__file__))
         self.cfg["dataset_folder"] = os.path.join(plugin_folder, 'dataset')
-        self.cfg["expert_mode"] = False
+        self.cfg["use_custom_model"] = False
         self.cfg["custom_config"] = ""
 
     def set_values(self, param_map):
         self.cfg["model_name"] = param_map["model_name"]
         self.cfg["model_url"] = param_map["model_url"]
         self.cfg["model_config"] = param_map["model_config"]
-        self.cfg["iters"] = int(param_map["iters"])
+        self.cfg["max_iter"] = int(param_map["max_iter"])
         self.cfg["batch_size"] = int(param_map["batch_size"])
-        self.cfg["dataset_split_percentage"] = int(param_map["dataset_split_percentage"])
+        self.cfg["dataset_split_ratio"] = float(param_map["dataset_split_ratio"])
         self.cfg["output_folder"] = param_map["output_folder"]
         self.cfg["eval_period"] = int(param_map["eval_period"])
         self.cfg["dataset_folder"] = param_map["dataset_folder"]
-        self.cfg["expert_mode"] = strtobool(param_map["expert_mode"])
+        self.cfg["use_custom_model"] = strtobool(param_map["use_custom_model"])
         self.cfg["custom_config"] = param_map["custom_config"]
 
 
@@ -189,9 +189,9 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
         plugin_folder = os.path.dirname(os.path.abspath(__file__))
 
         prepare_dataset(ikdataset, param.cfg["dataset_folder"],
-                        split_ratio=param.cfg["dataset_split_percentage"] / 100, cmap=cmap)
+                        split_ratio=param.cfg["dataset_split_ratio"], cmap=cmap)
 
-        expert_mode = param.cfg["expert_mode"]
+        expert_mode = param.cfg["use_custom_model"]
 
         args = Namespace()
         if expert_mode:
@@ -291,18 +291,18 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
                 cfg.default_hooks.checkpoint["rule"] = 'greater'
 
             cfg.train_cfg = dict(
-                type='IterBasedTrainLoop', max_iters=param.cfg["iters"], val_interval=param.cfg["eval_period"])
+                type='IterBasedTrainLoop', max_iters=param.cfg["max_iter"], val_interval=param.cfg["eval_period"])
 
             cfg.param_scheduler = [
                 dict(
                     type='LinearLR', start_factor=1e-06, by_epoch=False, begin=0,
-                    end=param.cfg["iters"]//10),
+                    end=param.cfg["max_iter"]//10),
                 dict(
                     type='PolyLR',
                     eta_min=0.0,
                     power=1.0,
-                    begin=param.cfg["iters"]//10,
-                    end=param.cfg["iters"],
+                    begin=param.cfg["max_iter"]//10,
+                    end=param.cfg["max_iter"],
                     by_epoch=False)
             ]
 
