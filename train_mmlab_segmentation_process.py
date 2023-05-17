@@ -102,7 +102,7 @@ class TrainMmlabSegmentationParam(TaskParam):
         self.cfg["model_weight_file"] = "https://download.openmmlab.com/mmsegmentation/v0.5/segformer/" \
                                 "segformer_mit-b2_512x512_160k_ade20k/" \
                                 "segformer_mit-b2_512x512_160k_ade20k_20210726_112103-cbd414ac.pth"
-        self.cfg["model_config"] = "segformer_mit-b2_512x512_160k_ade20k"
+        self.cfg["model_config"] = "segformer_mit-b2_8xb2-160k_ade20k-512x512"
         self.cfg["max_iter"] = 1000
         self.cfg["batch_size"] = 2
         self.cfg["dataset_split_ratio"] = 0.9
