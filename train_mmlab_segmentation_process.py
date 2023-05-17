@@ -99,7 +99,7 @@ class TrainMmlabSegmentationParam(TaskParam):
     def __init__(self):
         TaskParam.__init__(self)
         self.cfg["model_name"] = "segformer"
-        self.cfg["model_url"] = "https://download.openmmlab.com/mmsegmentation/v0.5/segformer/" \
+        self.cfg["model_weight_file"] = "https://download.openmmlab.com/mmsegmentation/v0.5/segformer/" \
                                 "segformer_mit-b2_512x512_160k_ade20k/" \
                                 "segformer_mit-b2_512x512_160k_ade20k_20210726_112103-cbd414ac.pth"
         self.cfg["model_config"] = "segformer_mit-b2_512x512_160k_ade20k"
@@ -111,11 +111,11 @@ class TrainMmlabSegmentationParam(TaskParam):
         plugin_folder = os.path.dirname(os.path.realpath(__file__))
         self.cfg["dataset_folder"] = os.path.join(plugin_folder, 'dataset')
         self.cfg["use_custom_model"] = False
-        self.cfg["custom_config"] = ""
+        self.cfg["config_file"] = ""
 
     def set_values(self, param_map):
         self.cfg["model_name"] = param_map["model_name"]
-        self.cfg["model_url"] = param_map["model_url"]
+        self.cfg["model_weight_file"] = param_map["model_weight_file"]
         self.cfg["model_config"] = param_map["model_config"]
         self.cfg["max_iter"] = int(param_map["max_iter"])
         self.cfg["batch_size"] = int(param_map["batch_size"])
@@ -124,7 +124,7 @@ class TrainMmlabSegmentationParam(TaskParam):
         self.cfg["eval_period"] = int(param_map["eval_period"])
         self.cfg["dataset_folder"] = param_map["dataset_folder"]
         self.cfg["use_custom_model"] = strtobool(param_map["use_custom_model"])
-        self.cfg["custom_config"] = param_map["custom_config"]
+        self.cfg["config_file"] = param_map["config_file"]
 
 
 # --------------------
@@ -191,11 +191,9 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
         prepare_dataset(ikdataset, param.cfg["dataset_folder"],
                         split_ratio=param.cfg["dataset_split_ratio"], cmap=cmap)
 
-        expert_mode = param.cfg["use_custom_model"]
-
         args = Namespace()
-        if expert_mode:
-            args.config = param.cfg["custom_config"]
+        if os.path.isfile(param.cfg["config_file"]):
+            args.config = param.cfg["config_file"]
             args.load_from = None
             args.resume_from = None
             args.no_validate = False
@@ -210,10 +208,14 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
             args.gpu_ids = None
             args.diff_seed = False
             args.persistent_workers = True
+            cfg = Config.fromfile(args.config)
         else:
-            args.config = os.path.join(plugin_folder, "configs", param.cfg["model_name"],
+            if param.cfg["config_file"].startswith("configs"):
+                args.config = os.path.join(plugin_folder, param.cfg["config_file"])
+            else:
+                args.config = os.path.join(plugin_folder, "configs", param.cfg["model_name"],
                                        param.cfg["model_config"] + ".py")
-            args.load_from = param.cfg["model_url"]
+            args.load_from = param.cfg["model_weight_file"] if param.cfg["model_weight_file"] != "" else None
             args.resume_from = None
             args.no_validate = False
             args.gpu_id = 0
@@ -238,6 +240,12 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
 
 
             classes = [cls for cls in ikdataset["metadata"]["category_names"].values()]
+
+            try:
+                cfg.model.decode_head.loss_cls.class_weight = [1.0] * len(classes) + [0.1]
+            except:
+                pass
+
             if cmap is not None:
                 palette = [list(color) for color in cmap.keys()]
             else:

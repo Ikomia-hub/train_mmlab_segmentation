@@ -74,8 +74,8 @@ class TrainMmlabSegmentationWidget(core.CWorkflowTaskWidget):
                                                                   mode=QFileDialog.Directory)
         self.check_use_custom_model = pyqtutils.append_check(self.gridLayout, "Expert mode",
                                                         self.parameters.cfg["use_custom_model"])
-        self.browse_custom_config = pyqtutils.append_browse_file(self.gridLayout, "Custom config",
-                                                                 path=self.parameters.cfg["custom_config"])
+        self.browse_config_file = pyqtutils.append_browse_file(self.gridLayout, "Custom config",
+                                                                 path=self.parameters.cfg["config_file"])
         # PyQt -> Qt wrapping
         layout_ptr = qtconversion.PyQtToQt(self.gridLayout)
 
@@ -105,7 +105,7 @@ class TrainMmlabSegmentationWidget(core.CWorkflowTaskWidget):
         # Example : self.parameters.windowSize = self.spinWindowSize.value()
         self.parameters.cfg["model_config"] = self.combo_config.currentText()
         self.parameters.cfg["model_name"] = self.combo_model.currentText()
-        self.parameters.cfg["model_url"] = self.available_cfg_ckpt[self.parameters.cfg["model_config"]]['ckpt']
+        self.parameters.cfg["model_weight_file"] = self.available_cfg_ckpt[self.parameters.cfg["model_config"]]['ckpt']
         self.parameters.cfg["batch_size"] = self.spin_batch_size.value()
         self.parameters.cfg["max_iter"] = self.spin_max_iter.value()
         self.parameters.cfg["eval_period"] = self.spin_eval_period.value()
@@ -113,7 +113,7 @@ class TrainMmlabSegmentationWidget(core.CWorkflowTaskWidget):
         self.parameters.cfg["output_folder"] = self.browse_output_folder.path
         self.parameters.cfg["dataset_folder"] = self.browse_dataset_folder.path
         self.parameters.cfg["use_custom_model"] = self.check_use_custom_model.isChecked()
-        self.parameters.cfg["custom_config"] = self.browse_custom_config.path
+        self.parameters.cfg["config_file"] = self.browse_config_file.path
 
         # Send signal to launch the process
         self.emit_apply(self.parameters)
