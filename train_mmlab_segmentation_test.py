@@ -12,5 +12,5 @@ def test(t, data_dict):
     params["batch_size"] = "1"
     params["dataset_split_ratio"] = "0.5"
     t.set_parameters(params)
-    input_dataset.load(data_dict["datasets"]["instance_segmentation"]["dataset_coco"])
+    input_dataset.load(data_dict["datasets"]["semantic_segmentation"]["dataset_coco"])
     yield run_for_test(t)
