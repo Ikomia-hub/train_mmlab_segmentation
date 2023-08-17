@@ -10,3 +10,5 @@ yapf
 mmcv==2.0.0; python_version < "3.10"
 mmsegmentation==1.0.0
 mmdet==3.0.0
+
+pillow<=8.1.0
