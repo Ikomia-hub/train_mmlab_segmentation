@@ -21,9 +21,6 @@
 
 Train for MMLAB segmentation models
 
-[Insert illustrative image here. Image must be accessible publicly, in algorithm Github repository for example.
-<img src="images/illustration.png"  alt="Illustrative image" width="30%" height="30%">]
-
 ## :rocket: Use with Ikomia API
 
 #### 1. Install Ikomia API
@@ -111,7 +108,3 @@ for output in algo.get_outputs()
     # Export it to JSON
     output.to_json()
 ```
-
-## :fast_forward: Advanced usage 
-
-[optional]
