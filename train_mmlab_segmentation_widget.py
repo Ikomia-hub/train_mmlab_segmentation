@@ -60,7 +60,7 @@ class TrainMmlabSegmentationWidget(core.CWorkflowTaskWidget):
         self.combo_config.setCurrentText(self.parameters.cfg["model_config"])
 
         self.spin_max_iter = pyqtutils.append_spin(self.gridLayout, "Iterations", self.parameters.cfg["max_iter"], min=10)
-        self.spin_batch_size = pyqtutils.append_spin(self.gridLayout, "Batch size", self.parameters.cfg["batch_size"])
+        self.spin_batch_size = pyqtutils.append_spin(self.gridLayout, "Batch size", self.parameters.cfg["batch_size"], min=2)
         self.spin_dataset_percentage = pyqtutils.append_double_spin(self.gridLayout, "Split train/test (%)",
                                                              self.parameters.cfg["dataset_split_ratio"],
                                                              min=0.1, max=1, decimals=2, step=0.1)
