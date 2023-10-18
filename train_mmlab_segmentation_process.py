@@ -21,28 +21,23 @@ from ikomia.core.task import TaskParam
 from ikomia.dnn import dnntrain
 from ikomia.core import config as ikcfg
 # Your imports below
-import os
-from distutils.util import strtobool
 # Copyright (c) OpenMMLab. All rights reserved.
 import copy
 import os
 import os.path as osp
 import warnings
-
 from argparse import Namespace
 from train_mmlab_segmentation.utils import prepare_dataset, UserStop
 import numpy as np
 from datetime import datetime
-
 from mmengine.visualization import Visualizer
 from mmengine.runner import Runner
 from mmengine.config import Config
-
 from mmseg.utils import register_all_modules
 import logging
+import yaml
 
 logger = logging.getLogger(__name__)
-
 class MyRunner(Runner):
 
     @classmethod
@@ -99,9 +94,7 @@ class TrainMmlabSegmentationParam(TaskParam):
     def __init__(self):
         TaskParam.__init__(self)
         self.cfg["model_name"] = "segformer"
-        self.cfg["model_weight_file"] = "https://download.openmmlab.com/mmsegmentation/v0.5/segformer/" \
-                                "segformer_mit-b2_512x512_160k_ade20k/" \
-                                "segformer_mit-b2_512x512_160k_ade20k_20210726_112103-cbd414ac.pth"
+        self.cfg["model_weight_file"] = ""
         self.cfg["model_config"] = "segformer_mit-b2_8xb2-160k_ade20k-512x512"
         self.cfg["max_iter"] = 1000
         self.cfg["batch_size"] = 2
@@ -110,7 +103,6 @@ class TrainMmlabSegmentationParam(TaskParam):
         self.cfg["eval_period"] = 100
         plugin_folder = os.path.dirname(os.path.realpath(__file__))
         self.cfg["dataset_folder"] = os.path.join(plugin_folder, 'dataset')
-        self.cfg["use_custom_model"] = False
         self.cfg["config_file"] = ""
 
     def set_values(self, param_map):
@@ -123,7 +115,6 @@ class TrainMmlabSegmentationParam(TaskParam):
         self.cfg["output_folder"] = param_map["output_folder"]
         self.cfg["eval_period"] = int(param_map["eval_period"])
         self.cfg["dataset_folder"] = param_map["dataset_folder"]
-        self.cfg["use_custom_model"] = strtobool(param_map["use_custom_model"])
         self.cfg["config_file"] = param_map["config_file"]
 
 
@@ -159,6 +150,58 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
             self.emit_step_progress()
             self.advancement += 1
 
+    @staticmethod
+    def get_absolute_paths(param):
+        if param.cfg["model_weight_file"] == "":
+            yaml_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs", param.cfg["model_name"],
+                                     "metafile.yaml")
+
+            if param.cfg["model_config"].endswith('.py'):
+                param.cfg["model_config"] = param.cfg["model_config"][:-3]
+            if os.path.isfile(yaml_file):
+                with open(yaml_file, "r") as f:
+                    models_list = yaml.load(f, Loader=yaml.FullLoader)['Models']
+
+                available_cfg_ckpt = {model_dict["Name"]: {'cfg': model_dict["Config"],
+                                                           'ckpt': model_dict["Weights"]}
+                                      for model_dict in models_list}
+                if param.cfg["model_config"] in available_cfg_ckpt:
+                    cfg_file = available_cfg_ckpt[param.cfg["model_config"]]['cfg']
+                    ckpt_file = available_cfg_ckpt[param.cfg["model_config"]]['ckpt']
+                    cfg_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), cfg_file)
+                    return cfg_file, ckpt_file
+                else:
+                    raise Exception(
+                        f"{param.cfg['model_config']} does not exist for {param.cfg['model_name']}. Available configs for are {', '.join(list(available_cfg_ckpt.keys()))}")
+            else:
+                raise Exception(f"Model name {param.cfg['model_name']} does not exist.")
+        else:
+            if os.path.isfile(param.cfg["model_config"]):
+                cfg_file = param.cfg["model_config"]
+            else:
+                cfg_file = param.cfg["config_file"]
+            ckpt_file = param.cfg["model_weight_file"]
+            return cfg_file, ckpt_file
+
+    @staticmethod
+    def get_model_zoo():
+        configs_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs")
+        available_pairs = []
+        for model_name in os.listdir(configs_folder):
+            if model_name.startswith('_'):
+                continue
+            yaml_file = os.path.join(configs_folder, model_name, "metafile.yaml")
+            if os.path.isfile(yaml_file):
+                with open(yaml_file, "r") as f:
+                    models_list = yaml.load(f, Loader=yaml.FullLoader)
+                    if 'Models' in models_list:
+                        models_list = models_list['Models']
+                    if not isinstance(models_list, list):
+                        continue
+                for model_dict in models_list:
+                    available_pairs.append({"model_name": model_name, "model_config": os.path.basename(model_dict["Name"])})
+        return available_pairs
+
     def run(self):
         # Core function of your process
         # Call begin_task_run for initialization
@@ -186,8 +229,6 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
                     range(len(ikdataset["metadata"]["category_colors"]))}
         else:
             cmap = None
-        plugin_folder = os.path.dirname(os.path.abspath(__file__))
-
         prepare_dataset(ikdataset, param.cfg["dataset_folder"],
                         split_ratio=param.cfg["dataset_split_ratio"], cmap=cmap)
 
@@ -210,12 +251,9 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
             args.persistent_workers = True
             cfg = Config.fromfile(args.config)
         else:
-            if param.cfg["config_file"].startswith("configs"):
-                args.config = os.path.join(plugin_folder, param.cfg["config_file"])
-            else:
-                args.config = os.path.join(plugin_folder, "configs", param.cfg["model_name"],
-                                       param.cfg["model_config"] + ".py")
-            args.load_from = param.cfg["model_weight_file"] if param.cfg["model_weight_file"] != "" else None
+            cfg, ckpt = self.get_absolute_paths(param)
+            args.config = cfg
+            args.load_from = param.cfg["model_weight_file"] if param.cfg["model_weight_file"] != "" else ckpt
             args.resume_from = None
             args.no_validate = False
             args.gpu_id = 0
@@ -411,7 +449,7 @@ class TrainMmlabSegmentationFactory(dataprocess.CTaskFactory):
         # relative path -> as displayed in Ikomia application process tree
         self.info.path = "Plugins/Python/Segmentation"
         self.info.icon_path = "icons/mmlab.png"
-        self.info.version = "1.1.0"
+        self.info.version = "2.0.0"
         # self.info.icon_path = "your path to a specific icon"
         self.info.authors = "MMSegmentation Contributors"
         self.info.article = "{MMSegmentation}: OpenMMLab Semantic Segmentation Toolbox and Benchmark"

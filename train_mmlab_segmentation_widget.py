@@ -72,8 +72,10 @@ class TrainMmlabSegmentationWidget(core.CWorkflowTaskWidget):
         self.browse_dataset_folder = pyqtutils.append_browse_file(self.gridLayout, "Output dataset folder",
                                                                   path=self.parameters.cfg["dataset_folder"],
                                                                   mode=QFileDialog.Directory)
+        self.browse_model_weight_file = pyqtutils.append_browse_file(self.gridLayout, "Model weight file",
+                                                                     path=self.parameters.cfg["model_weight_file"])
         self.check_use_custom_model = pyqtutils.append_check(self.gridLayout, "Expert mode",
-                                                        self.parameters.cfg["use_custom_model"])
+                                                             self.parameters.cfg["config_file"] != "")
         self.browse_config_file = pyqtutils.append_browse_file(self.gridLayout, "Custom config",
                                                                  path=self.parameters.cfg["config_file"])
         # PyQt -> Qt wrapping
@@ -84,19 +86,16 @@ class TrainMmlabSegmentationWidget(core.CWorkflowTaskWidget):
 
     def on_model_changed(self, s):
         self.combo_config.clear()
-        if s not in self.available_models:
-            return
         model = self.combo_model.currentText()
         yaml_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs", model, "metafile.yaml")
         if os.path.isfile(yaml_file):
             with open(yaml_file, "r") as f:
                 models_list = yaml.load(f, Loader=yaml.FullLoader)['Models']
-
-            self.available_cfg_ckpt = {model_dict["Name"]: {'cfg': model_dict["Config"], 'ckpt': model_dict["Weights"]} for
-                                       model_dict in models_list}
-            for experiment_name in self.available_cfg_ckpt.keys():
-                self.combo_config.addItem(experiment_name)
-            self.combo_config.setCurrentText(list(self.available_cfg_ckpt.keys())[0])
+            available_cfg = [model_dict["Name"] for
+                             model_dict in models_list
+                             if "Weights" in model_dict]
+            self.combo_config.addItems(available_cfg)
+            self.combo_config.setCurrentText(available_cfg[0])
 
     def on_apply(self):
         # Apply button clicked slot
@@ -105,15 +104,14 @@ class TrainMmlabSegmentationWidget(core.CWorkflowTaskWidget):
         # Example : self.parameters.windowSize = self.spinWindowSize.value()
         self.parameters.cfg["model_config"] = self.combo_config.currentText()
         self.parameters.cfg["model_name"] = self.combo_model.currentText()
-        self.parameters.cfg["model_weight_file"] = self.available_cfg_ckpt[self.parameters.cfg["model_config"]]['ckpt']
         self.parameters.cfg["batch_size"] = self.spin_batch_size.value()
         self.parameters.cfg["max_iter"] = self.spin_max_iter.value()
         self.parameters.cfg["eval_period"] = self.spin_eval_period.value()
         self.parameters.cfg["dataset_split_ratio"] = self.spin_dataset_percentage.value()
         self.parameters.cfg["output_folder"] = self.browse_output_folder.path
         self.parameters.cfg["dataset_folder"] = self.browse_dataset_folder.path
-        self.parameters.cfg["use_custom_model"] = self.check_use_custom_model.isChecked()
         self.parameters.cfg["config_file"] = self.browse_config_file.path
+        self.parameters.cfg["model_weight_file"] = self.browse_model_weight_file.path
 
         # Send signal to launch the process
         self.emit_apply(self.parameters)
