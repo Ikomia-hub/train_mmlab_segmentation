@@ -33,20 +33,27 @@ pip install ikomia
 
 #### 2. Create your workflow
 
-[Change the sample image URL to fit algorithm purpose]
 
 ```python
-import ikomia
 from ikomia.dataprocess.workflow import Workflow
 
 # Init your workflow
-wf = Workflow()
+wf = Workflow()    
 
-# Add algorithm
-algo = wf.add_task(name="train_mmlab_segmentation", auto_connect=True)
+# Add data loader
+coco = wf.add_task(name="dataset_coco")
 
-# Run on your image  
-wf.run_on(url="example_image.png")
+coco.set_parameters({
+    "json_file": "path/to/json/annotation/file",
+    "image_folder": "path/to/image/folder",
+    "task": "semantic_segmentation",
+}) 
+
+# Add train algorithm 
+train = wf.add_task(name="train_mmlab_segmentation", auto_connect=True)
+
+# Launch your training on your data
+wf.run()
 ```
 
 ## :sunny: Use with Ikomia Studio
@@ -59,52 +66,40 @@ Ikomia Studio offers a friendly UI with the same features as the API.
 
 ## :pencil: Set algorithm parameters
 
-[Explain each algorithm parameters]
+- **model_name** (str) - default 'segformer': Name of the model.
+- **model_config** (str) - default 'segformer_mit-b2_8xb2-160k_ade20k-512x512': Name of the config.
+- **batch_size** (int) - default 2: Number of samples processed before the model is updated. Minimum batch_size is 2.
+- **max_iter** (int) - default 1000: Number of training iterations.
+- **dataset_split_ratio** (float) – default '0.9': Divide the dataset into train and evaluation sets ]0, 1[.
+- **output_folder** (str, *optional*): path to where the model will be saved. 
+- **eval_period** (int) - default 100: Number of iterations between 2 evaluations.
+- **model_weight_file** (str, *optional*): Model weights used as pretrained model. Will use by default mmlab's weights.
+- **config_file** (str, *optional*): Path to the training config file .yaml. Use it only if you know exactly how mmlab works
+- **dataset_folder** (str, *optional*): Folder where to save the dataset formatted for mmlab. Is by default in the algorithm directory.
 
-[Change the sample image URL to fit algorithm purpose]
+**model_name** and **model_config** work by pair. You can print the available possibilities with this code snippet:
 
 ```python
-import ikomia
 from ikomia.dataprocess.workflow import Workflow
 
 # Init your workflow
 wf = Workflow()
 
 # Add algorithm
-algo = wf.add_task(name="train_mmlab_segmentation", auto_connect=True)
+train = wf.add_task(name="train_mmlab_segmentation")
 
-algo.set_parameters({
-    "param1": "value1",
-    "param2": "value2",
-    ...
-})
-
-# Run on your image  
-wf.run_on(url="example_image.png")
-
+# Get model zoo and print it
+model_zoo = train.get_model_zoo()
+print(model_zoo)
 ```
 
-## :mag: Explore algorithm outputs
-
-Every algorithm produces specific outputs, yet they can be explored them the same way using the Ikomia API. For a more in-depth understanding of managing algorithm outputs, please refer to the [documentation](https://ikomia-dev.github.io/python-api-documentation/advanced_guide/IO_management.html).
+*Note*: parameter key and value should be in **string format** when added to the dictionary.
 
 ```python
-import ikomia
-from ikomia.dataprocess.workflow import Workflow
-
-# Init your workflow
-wf = Workflow()
-
-# Add algorithm
-algo = wf.add_task(name="train_mmlab_segmentation", auto_connect=True)
-
-# Run on your image  
-wf.run_on(url="example_image.png")
-
-# Iterate over outputs
-for output in algo.get_outputs()
-    # Print information
-    print(output)
-    # Export it to JSON
-    output.to_json()
+...
+train.set_parameters({
+    "param1": "value1",
+    "param2": "value2",
+})
+...
 ```
