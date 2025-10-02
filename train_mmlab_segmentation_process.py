@@ -15,29 +15,31 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+import copy
+import os
+import warnings
+from argparse import Namespace
+from datetime import datetime
+import logging
+import yaml
+
+import numpy as np
 
 from ikomia import core, dataprocess
 from ikomia.core.task import TaskParam
 from ikomia.dnn import dnntrain
 from ikomia.core import config as ikcfg
-# Your imports below
-# Copyright (c) OpenMMLab. All rights reserved.
-import copy
-import os
-import os.path as osp
-import warnings
-from argparse import Namespace
-from train_mmlab_segmentation.utils import prepare_dataset, UserStop
-import numpy as np
-from datetime import datetime
+
 from mmengine.visualization import Visualizer
 from mmengine.runner import Runner
 from mmengine.config import Config
 from mmseg.utils import register_all_modules
-import logging
-import yaml
+
+from train_mmlab_segmentation.utils import prepare_dataset, UserStop
+
 
 logger = logging.getLogger(__name__)
+
 class MyRunner(Runner):
 
     @classmethod
@@ -81,7 +83,6 @@ class MyRunner(Runner):
             experiment_name=cfg.get('experiment_name'),
             cfg=cfg,
         )
-
         return runner
 
 
@@ -158,13 +159,18 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
 
             if param.cfg["model_config"].endswith('.py'):
                 param.cfg["model_config"] = param.cfg["model_config"][:-3]
+
             if os.path.isfile(yaml_file):
                 with open(yaml_file, "r") as f:
                     models_list = yaml.load(f, Loader=yaml.FullLoader)['Models']
 
-                available_cfg_ckpt = {model_dict["Name"]: {'cfg': model_dict["Config"],
-                                                           'ckpt': model_dict["Weights"]}
-                                      for model_dict in models_list}
+                available_cfg_ckpt = {
+                    model_dict["Name"]: {
+                        'cfg': model_dict["Config"],
+                        'ckpt': model_dict["Weights"]
+                    } for model_dict in models_list
+                }
+
                 if param.cfg["model_config"] in available_cfg_ckpt:
                     cfg_file = available_cfg_ckpt[param.cfg["model_config"]]['cfg']
                     ckpt_file = available_cfg_ckpt[param.cfg["model_config"]]['ckpt']
@@ -180,6 +186,7 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
                 cfg_file = param.cfg["model_config"]
             else:
                 cfg_file = param.cfg["config_file"]
+
             ckpt_file = param.cfg["model_weight_file"]
             return cfg_file, ckpt_file
 
@@ -187,39 +194,45 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
     def get_model_zoo():
         configs_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs")
         available_pairs = []
+
         for model_name in os.listdir(configs_folder):
             if model_name.startswith('_'):
                 continue
+
             yaml_file = os.path.join(configs_folder, model_name, "metafile.yaml")
             if os.path.isfile(yaml_file):
                 with open(yaml_file, "r") as f:
                     models_list = yaml.load(f, Loader=yaml.FullLoader)
                     if 'Models' in models_list:
                         models_list = models_list['Models']
+
                     if not isinstance(models_list, list):
                         continue
+
                 for model_dict in models_list:
                     available_pairs.append({"model_name": model_name, "model_config": os.path.basename(model_dict["Name"])})
+
         return available_pairs
 
     def run(self):
         # Core function of your process
         # Call begin_task_run for initialization
         self.begin_task_run()
-
         self.stop_train = False
 
         # Get param
         param = self.get_param_object()
 
         # Get input dataset
-        input = self.get_input(0)
+        dataset_input = self.get_input(0)
         # Current datetime is used as folder name
         str_datetime = datetime.now().strftime("%d-%m-%YT%Hh%Mm%Ss")
-        if len(input.data) == 0:
+
+        if len(dataset_input.data) == 0:
             print("ERROR, there is no input dataset")
             self.end_task_run()
             return
+
         # Tensorboard
         tb_logdir = os.path.join(ikcfg.main_cfg["tensorboard"]["log_uri"], str_datetime)
 
@@ -229,8 +242,11 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
                     range(len(ikdataset["metadata"]["category_colors"]))}
         else:
             cmap = None
-        prepare_dataset(ikdataset, param.cfg["dataset_folder"],
-                        split_ratio=param.cfg["dataset_split_ratio"], cmap=cmap)
+
+        prepare_dataset(ikdataset,
+                        param.cfg["dataset_folder"],
+                        split_ratio=param.cfg["dataset_split_ratio"],
+                        cmap=cmap)
 
         args = Namespace()
         if os.path.isfile(param.cfg["config_file"]):
@@ -276,7 +292,6 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
 
             cfg.dataset_type = 'BaseSegDataset'
 
-
             classes = [cls for cls in ikdataset["metadata"]["category_names"].values()]
 
             try:
@@ -292,6 +307,7 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
             for t in cfg.train_pipeline:
                 if "reduce_zero_label" in t:
                     t.reduce_zero_label = False
+
             for t in cfg.test_pipeline:
                 if "reduce_zero_label" in t:
                     t.reduce_zero_label = False
@@ -361,29 +377,33 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
                 cfg.work_dir = args.work_dir
             elif cfg.get('work_dir', None) is None:
                 # use config filename as default work_dir if cfg.work_dir is None
-                cfg.work_dir = osp.join('./work_dirs',
-                                        osp.splitext(osp.basename(args.config))[0])
+                cfg.work_dir = os.path.join('./work_dirs', os.path.splitext(os.path.basename(args.config))[0])
+
             if args.load_from is not None:
                 cfg.load_from = args.load_from
 
             cfg.model.pretrained = None
             if args.resume_from is not None:
                 cfg.resume_from = args.resume_from
+
             if args.gpus is not None:
                 cfg.gpu_ids = range(1)
                 warnings.warn('`--gpus` is deprecated because we only support '
                               'single GPU mode in non-distributed training. '
                               'Use `gpus=1` now.')
+
             if args.gpu_ids is not None:
                 cfg.gpu_ids = args.gpu_ids[0:1]
                 warnings.warn('`--gpu-ids` is deprecated, please use `--gpu-id`. '
                               'Because we only support single GPU mode in '
                               'non-distributed training. Use the first GPU '
                               'in `gpu_ids` now.')
+
             if args.gpus is None and args.gpu_ids is None:
                 cfg.gpu_ids = [args.gpu_id]
                 # load config
                 cfg.launcher = args.launcher
+
                 if args.cfg_options is not None:
                     cfg.merge_from_dict(args.cfg_options)
 
@@ -393,16 +413,21 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
                     cfg.work_dir = args.work_dir
                 elif cfg.get('work_dir', None) is None:
                     # use config filename as default work_dir if cfg.work_dir is None
-                    cfg.work_dir = osp.join('./work_dirs',
-                                            osp.splitext(osp.basename(args.config))[0])
+                    cfg.work_dir = os.path.join('./work_dirs', os.path.splitext(os.path.basename(args.config))[0])
+
         cfg.visualizer = dict(
-        type='SegLocalVisualizer',
-        vis_backends=[dict(type='TensorboardVisBackend', save_dir=tb_logdir)],
-        name='visualizer')
+            type='SegLocalVisualizer',
+            vis_backends=[dict(type='TensorboardVisBackend', save_dir=tb_logdir)],
+            name='visualizer'
+        )
 
         custom_hooks = [
-            dict(type='EmitProgresseAndStopHook', stop=self.get_stop, output_folder=cfg.work_dir,
-                 emit_step_progress=self.emit_step_progress, priority='LOWEST'),
+            dict(
+                type='EmitProgresseAndStopHook',
+                stop=self.get_stop,
+                output_folder=cfg.work_dir,
+                emit_step_progress=self.emit_step_progress, priority='LOWEST'
+            ),
             dict(type='CustomLoggerHook', log_metrics=self.log_metrics)
         ]
 
@@ -449,8 +474,10 @@ class TrainMmlabSegmentationFactory(dataprocess.CTaskFactory):
         # relative path -> as displayed in Ikomia application process tree
         self.info.path = "Plugins/Python/Segmentation"
         self.info.icon_path = "icons/mmlab.png"
-        self.info.version = "2.0.2"
-        # self.info.icon_path = "your path to a specific icon"
+        self.info.version = "2.1.0"
+        self.info.max_python_version = "3.9"
+        self.info.max_python_version = "3.11"
+        self.info.min_ikomia_version = "0.15.0"
         self.info.authors = "MMSegmentation Contributors"
         self.info.article = "{MMSegmentation}: OpenMMLab Semantic Segmentation Toolbox and Benchmark"
         self.info.journal = "publication journal"
@@ -465,6 +492,10 @@ class TrainMmlabSegmentationFactory(dataprocess.CTaskFactory):
         self.info.keywords = "mmlab, train, segmentation"
         self.info.algo_type = core.AlgoType.TRAIN
         self.info.algo_tasks = "INSTANCE_SEGMENTATION,SEMANTIC_SEGMENTATION,PANOPTIC_SEGMENTATION"
+        self.info.hardware_config.min_cpu = 4
+        self.info.hardware_config.min_ram = 16
+        self.info.hardware_config.gpu_required = True
+        self.info.hardware_config.min_vram = 16
 
     def create(self, param=None):
         # Create process object
