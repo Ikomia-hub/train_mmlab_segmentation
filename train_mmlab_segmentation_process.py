@@ -480,6 +480,7 @@ class TrainMmlabSegmentationFactory(dataprocess.CTaskFactory):
         self.info.icon_path = "icons/mmlab.png"
         self.info.version = "3.0.0"
         self.info.min_ikomia_version = "0.16.0"
+        self.info.min_python_version = "3.10"
         self.info.authors = "MMSegmentation Contributors"
         self.info.article = "{MMSegmentation}: OpenMMLab Semantic Segmentation Toolbox and Benchmark"
         self.info.journal = "publication journal"
