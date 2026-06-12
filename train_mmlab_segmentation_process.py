@@ -23,6 +23,7 @@ from train_mmlab_segmentation.utils import prepare_dataset, UserStop
 
 logger = logging.getLogger(__name__)
 
+
 class MyRunner(Runner):
 
     @classmethod
@@ -83,7 +84,8 @@ class TrainMmlabSegmentationParam(TaskParam):
         self.cfg["max_iter"] = 1000
         self.cfg["batch_size"] = 2
         self.cfg["dataset_split_ratio"] = 0.9
-        self.cfg["output_folder"] = os.path.dirname(os.path.realpath(__file__)) + "/runs/"
+        self.cfg["output_folder"] = os.path.dirname(
+            os.path.realpath(__file__)) + "/runs/"
         self.cfg["eval_period"] = 100
         plugin_folder = os.path.dirname(os.path.realpath(__file__))
         self.cfg["dataset_folder"] = os.path.join(plugin_folder, 'dataset')
@@ -95,7 +97,8 @@ class TrainMmlabSegmentationParam(TaskParam):
         self.cfg["model_config"] = param_map["model_config"]
         self.cfg["max_iter"] = int(param_map["max_iter"])
         self.cfg["batch_size"] = int(param_map["batch_size"])
-        self.cfg["dataset_split_ratio"] = float(param_map["dataset_split_ratio"])
+        self.cfg["dataset_split_ratio"] = float(
+            param_map["dataset_split_ratio"])
         self.cfg["output_folder"] = param_map["output_folder"]
         self.cfg["eval_period"] = int(param_map["eval_period"])
         self.cfg["dataset_folder"] = param_map["dataset_folder"]
@@ -129,7 +132,8 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
 
     def update_progress(self):
         self.epochs_done += 1
-        steps = range(self.advancement, int(100 * self.iters_done / self.iters_todo))
+        steps = range(self.advancement, int(
+            100 * self.iters_done / self.iters_todo))
         for step in steps:
             self.emit_step_progress()
             self.advancement += 1
@@ -145,7 +149,8 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
 
             if os.path.isfile(yaml_file):
                 with open(yaml_file, "r") as f:
-                    models_list = yaml.load(f, Loader=yaml.FullLoader)['Models']
+                    models_list = yaml.load(
+                        f, Loader=yaml.FullLoader)['Models']
 
                 available_cfg_ckpt = {
                     model_dict["Name"]: {
@@ -157,13 +162,15 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
                 if param.cfg["model_config"] in available_cfg_ckpt:
                     cfg_file = available_cfg_ckpt[param.cfg["model_config"]]['cfg']
                     ckpt_file = available_cfg_ckpt[param.cfg["model_config"]]['ckpt']
-                    cfg_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), cfg_file)
+                    cfg_file = os.path.join(os.path.dirname(
+                        os.path.abspath(__file__)), cfg_file)
                     return cfg_file, ckpt_file
                 else:
                     raise Exception(
                         f"{param.cfg['model_config']} does not exist for {param.cfg['model_name']}. Available configs for are {', '.join(list(available_cfg_ckpt.keys()))}")
             else:
-                raise Exception(f"Model name {param.cfg['model_name']} does not exist.")
+                raise Exception(
+                    f"Model name {param.cfg['model_name']} does not exist.")
         else:
             if os.path.isfile(param.cfg["model_config"]):
                 cfg_file = param.cfg["model_config"]
@@ -175,14 +182,16 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
 
     @staticmethod
     def get_model_zoo():
-        configs_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs")
+        configs_folder = os.path.join(os.path.dirname(
+            os.path.abspath(__file__)), "configs")
         available_pairs = []
 
         for model_name in os.listdir(configs_folder):
             if model_name.startswith('_'):
                 continue
 
-            yaml_file = os.path.join(configs_folder, model_name, "metafile.yaml")
+            yaml_file = os.path.join(
+                configs_folder, model_name, "metafile.yaml")
             if os.path.isfile(yaml_file):
                 with open(yaml_file, "r") as f:
                     models_list = yaml.load(f, Loader=yaml.FullLoader)
@@ -193,7 +202,8 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
                         continue
 
                 for model_dict in models_list:
-                    available_pairs.append({"model_name": model_name, "model_config": os.path.basename(model_dict["Name"])})
+                    available_pairs.append(
+                        {"model_name": model_name, "model_config": os.path.basename(model_dict["Name"])})
 
         return available_pairs
 
@@ -217,7 +227,8 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
             return
 
         # Tensorboard
-        tb_logdir = os.path.join(ikcfg.main_cfg["tensorboard"]["log_uri"], str_datetime)
+        tb_logdir = os.path.join(
+            ikcfg.main_cfg["tensorboard"]["log_uri"], str_datetime)
 
         ikdataset = input.data
         if "category_colors" in ikdataset["metadata"]:
@@ -267,7 +278,8 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
             args.diff_seed = False
             args.persistent_workers = True
 
-            args.work_dir = os.path.join(param.cfg["output_folder"], str_datetime)
+            args.work_dir = os.path.join(
+                param.cfg["output_folder"], str_datetime)
 
             cfg = Config.fromfile(args.config)
             if args.cfg_options is not None:
@@ -275,17 +287,20 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
 
             cfg.dataset_type = 'BaseSegDataset'
 
-            classes = [cls for cls in ikdataset["metadata"]["category_names"].values()]
+            classes = [cls for cls in ikdataset["metadata"]
+                       ["category_names"].values()]
 
             try:
-                cfg.model.decode_head.loss_cls.class_weight = [1.0] * len(classes) + [0.1]
+                cfg.model.decode_head.loss_cls.class_weight = [
+                    1.0] * len(classes) + [0.1]
             except:
                 pass
 
             if cmap is not None:
                 palette = [list(color) for color in cmap.keys()]
             else:
-                palette = np.random.randint(256, size=(len(classes), 3)).tolist()
+                palette = np.random.randint(
+                    256, size=(len(classes), 3)).tolist()
 
             for t in cfg.train_pipeline:
                 if "reduce_zero_label" in t:
@@ -295,24 +310,26 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
                 if "reduce_zero_label" in t:
                     t.reduce_zero_label = False
 
-            test_dataset = dict(type= cfg.dataset_type,
-                        img_suffix = '.jpg',
-                        seg_map_suffix = '.png',
-                        metainfo = dict(classes = classes, palette= palette),
-                        data_root = None,
-                        data_prefix= dict(img_path=os.path.join(param.cfg["dataset_folder"], "images", "val"),
-                                          seg_map_path=os.path.join(param.cfg["dataset_folder"], "labels", "val")),
-                        reduce_zero_label = False,
-                        pipeline=cfg.test_pipeline)
-            train_dataset = dict(type= cfg.dataset_type,
-                        img_suffix='.jpg',
-                        seg_map_suffix='.png',
-                        metainfo=dict(classes=classes, palette=palette),
-                        data_root=None,
-                        data_prefix=dict(img_path=os.path.join(param.cfg["dataset_folder"], "images", "train"),
-                                         seg_map_path=os.path.join(param.cfg["dataset_folder"], "labels", "train")),
-                        reduce_zero_label=False,
-                        pipeline=cfg.train_pipeline)
+            test_dataset = dict(type=cfg.dataset_type,
+                                img_suffix='.jpg',
+                                seg_map_suffix='.png',
+                                metainfo=dict(classes=classes,
+                                              palette=palette),
+                                data_root=None,
+                                data_prefix=dict(img_path=os.path.join(param.cfg["dataset_folder"], "images", "val"),
+                                                 seg_map_path=os.path.join(param.cfg["dataset_folder"], "labels", "val")),
+                                reduce_zero_label=False,
+                                pipeline=cfg.test_pipeline)
+            train_dataset = dict(type=cfg.dataset_type,
+                                 img_suffix='.jpg',
+                                 seg_map_suffix='.png',
+                                 metainfo=dict(classes=classes,
+                                               palette=palette),
+                                 data_root=None,
+                                 data_prefix=dict(img_path=os.path.join(param.cfg["dataset_folder"], "images", "train"),
+                                                  seg_map_path=os.path.join(param.cfg["dataset_folder"], "labels", "train")),
+                                 reduce_zero_label=False,
+                                 pipeline=cfg.train_pipeline)
 
             cfg.train_dataloader = dict(
                 batch_size=param.cfg["batch_size"],
@@ -352,7 +369,8 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
             ]
 
             cfg.checkpoint_config = dict()
-            cfg.model.decode_head.num_classes = len(ikdataset["metadata"]["category_names"])
+            cfg.model.decode_head.num_classes = len(
+                ikdataset["metadata"]["category_names"])
 
             # work_dir is determined in this priority: CLI > segment in file > filename
             if args.work_dir is not None:
@@ -360,7 +378,8 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
                 cfg.work_dir = args.work_dir
             elif cfg.get('work_dir', None) is None:
                 # use config filename as default work_dir if cfg.work_dir is None
-                cfg.work_dir = os.path.join('./work_dirs', os.path.splitext(os.path.basename(args.config))[0])
+                cfg.work_dir = os.path.join(
+                    './work_dirs', os.path.splitext(os.path.basename(args.config))[0])
 
             if args.load_from is not None:
                 cfg.load_from = args.load_from
@@ -396,11 +415,13 @@ class TrainMmlabSegmentation(dnntrain.TrainProcess):
                     cfg.work_dir = args.work_dir
                 elif cfg.get('work_dir', None) is None:
                     # use config filename as default work_dir if cfg.work_dir is None
-                    cfg.work_dir = os.path.join('./work_dirs', os.path.splitext(os.path.basename(args.config))[0])
+                    cfg.work_dir = os.path.join(
+                        './work_dirs', os.path.splitext(os.path.basename(args.config))[0])
 
         cfg.visualizer = dict(
             type='SegLocalVisualizer',
-            vis_backends=[dict(type='TensorboardVisBackend', save_dir=tb_logdir)],
+            vis_backends=[
+                dict(type='TensorboardVisBackend', save_dir=tb_logdir)],
             name='visualizer'
         )
 
@@ -457,10 +478,9 @@ class TrainMmlabSegmentationFactory(dataprocess.CTaskFactory):
         # relative path -> as displayed in Ikomia application process tree
         self.info.path = "Plugins/Python/Segmentation"
         self.info.icon_path = "icons/mmlab.png"
-        self.info.version = "2.2.0"
-        self.info.max_python_version = "3.10"
-        self.info.max_python_version = "3.11"
+        self.info.version = "3.0.0"
         self.info.min_ikomia_version = "0.16.0"
+        self.info.min_python_version = "3.10"
         self.info.authors = "MMSegmentation Contributors"
         self.info.article = "{MMSegmentation}: OpenMMLab Semantic Segmentation Toolbox and Benchmark"
         self.info.journal = "publication journal"
@@ -470,7 +490,7 @@ class TrainMmlabSegmentationFactory(dataprocess.CTaskFactory):
         self.info.documentation_link = "https://mmsegmentation.readthedocs.io/en/latest/"
         # Code source repository
         self.info.repository = "https://github.com/Ikomia-hub/train_mmlab_segmentation"
-        self.info.original_repository = "https://github.com/open-mmlab/mmsegmentation"
+        self.info.original_repository = "https://github.com/Ikomia-dev/mmsegmentation"
         # Keywords used for search
         self.info.keywords = "mmlab, train, segmentation"
         self.info.algo_type = core.AlgoType.TRAIN

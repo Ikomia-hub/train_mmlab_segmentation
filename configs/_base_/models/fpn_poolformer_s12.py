@@ -1,6 +1,6 @@
 # model settings
 norm_cfg = dict(type='SyncBN', requires_grad=True)
-checkpoint_file = 'https://download.openmmlab.com/mmclassification/v0/poolformer/poolformer-s12_3rdparty_32xb128_in1k_20220414-f8d83051.pth'  # noqa
+checkpoint_file = 'https://mmassets.onedl.ai/mmclassification/v0/poolformer/poolformer-s12_3rdparty_32xb128_in1k_20220414-f8d83051.pth'  # noqa
 # TODO: delete custom_imports after mmcls supports auto import
 # please install mmcls>=1.0
 # import mmcls.models to trigger register_module in mmcls
