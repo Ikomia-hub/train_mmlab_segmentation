@@ -478,7 +478,7 @@ class TrainMmlabSegmentationFactory(dataprocess.CTaskFactory):
         # relative path -> as displayed in Ikomia application process tree
         self.info.path = "Plugins/Python/Segmentation"
         self.info.icon_path = "icons/mmlab.png"
-        self.info.version = "3.0.0"
+        self.info.version = "3.1.0"
         self.info.min_ikomia_version = "0.16.0"
         self.info.min_python_version = "3.10"
         self.info.authors = "MMSegmentation Contributors"
